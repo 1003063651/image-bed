@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图床上传</title>
+<style>
+  :root {
+    --bg: #f6f8fa; --surface: #ffffff; --text: #1f2328; --muted: #59636e;
+    --border: #d1d9e0; --accent: #0969da; --accent-hover: #0550ae;
+    --ok: #1a7f37; --err: #cf222e; --code-bg: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --surface: #161b22; --text: #e6edf3; --muted: #9198a1;
+      --border: #30363d; --accent: #4493f8; --accent-hover: #79b8ff;
+      --ok: #3fb950; --err: #f85149; --code-bg: #0d1117;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; padding: 32px 16px;
+  }
+  .wrap { width: 100%; max-width: 720px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  h1 { font-size: 22px; }
+  h1 small { font-size: 13px; color: var(--muted); font-weight: normal; margin-left: 8px; }
+  .icon-btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 8px 14px; cursor: pointer; font-size: 14px;
+  }
+  .icon-btn:hover { border-color: var(--accent); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  #dropzone {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 48px 20px;
+    text-align: center; cursor: pointer; transition: .15s; background: var(--surface);
+  }
+  #dropzone:hover, #dropzone.dragover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+  #dropzone .big { font-size: 40px; margin-bottom: 12px; }
+  #dropzone p { color: var(--muted); font-size: 14px; line-height: 1.8; }
+  #fileInput { display: none; }
+  .cfg label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .cfg input {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font-size: 14px; font-family: monospace;
+  }
+  .cfg input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .cfg .hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+  .cfg .hint a { color: var(--accent); }
+  .btn {
+    display: inline-block; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; margin-top: 14px;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 7px 14px; font-size: 13px; margin-top: 0; }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .hidden { display: none !important; }
+  .item { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border); align-items: flex-start; }
+  .item:first-child { border-top: none; padding-top: 4px; }
+  .thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; background: var(--code-bg); }
+  .info { flex: 1; min-width: 0; }
+  .info .name { font-size: 14px; font-weight: 600; word-break: break-all; }
+  .info .meta { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+  .linkrow { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .linkrow code {
+    flex: 1; font-size: 12px; background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .status { font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
+  .status.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ok); border: 1px solid var(--ok); }
+  .status.err { background: color-mix(in srgb, var(--err) 10%, var(--surface)); color: var(--err); border: 1px solid var(--err); }
+  .status.working { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  footer { margin-top: 24px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.8; }
+  footer a { color: var(--accent); }
+  .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 24px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📤 图床上传<small>GitHub + jsDelivr</small></h1>
+    <button class="icon-btn" id="cfgToggle">⚙️ 设置</button>
+  </header>
+
+  <div id="status" class="status hidden"></div>
+
+  <div class="card cfg hidden" id="cfgPanel">
+    <label>GitHub Token（只保存在本浏览器，不会发送到任何其他地方）</label>
+    <input type="password" id="cfgToken" placeholder="github_pat_..." autocomplete="off">
+    <div class="hint">去 <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">创建 fine-grained token</a>，
+      只给 <b>image-bed</b> 仓库的 <b>Contents</b> 读写权限即可；也可以用 classic token（勾选 repo）。</div>
+    <label>仓库（owner/repo）</label>
+    <input id="cfgRepo" placeholder="1003063651/image-bed">
+    <label>分支</label>
+    <input id="cfgBranch" placeholder="main">
+    <label>存储路径模板（{y} 年 {m} 月 {d} 日）</label>
+    <input id="cfgPath" placeholder="images/{y}/{m}/">
+    <button class="btn" id="cfgSave">保存设置</button>
+  </div>
+
+  <div id="dropzone">
+    <div class="big">🖼️</div>
+    <p><b>把图片拖到这里</b>，或点击选择文件<br>也支持截图后直接 <b>Ctrl+V</b> 粘贴上传</p>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    <div id="history"></div>
+  </div>
+
+  <footer>
+    图片存在公开仓库中，请勿上传私密图片 · 单个文件建议 &lt; 25MB<br>
+    仓库地址 <a href="https://github.com/1003063651/image-bed" target="_blank" rel="noopener">1003063651/image-bed</a>
+  </footer>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem('imgbed_' + k); return v === null ? d : v; } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem('imgbed_' + k, v); } catch (e) {} }
+  };
+  var cfg = {
+    token: store.get('token', ''),
+    repo: store.get('repo', '1003063651/image-bed'),
+    branch: store.get('branch', 'main'),
+    pathTpl: store.get('path', 'images/{y}/{m}/')
+  };
+
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._timer); t._timer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function setStatus(kind, html) {
+    var s = $('status');
+    if (!kind) { s.className = 'status hidden'; s.innerHTML = ''; return; }
+    s.className = 'status ' + kind; s.innerHTML = html;
+  }
+  function copyText(text, label) {
+    function done() { toast((label || '已复制') + ' ✅'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败，请手动复制'); }
+      document.body.removeChild(ta);
+    }
+  }
+
+  // ---- 配置面板 ----
+  $('cfgToggle').onclick = function () { $('cfgPanel').classList.toggle('hidden'); };
+  function loadCfgToForm() {
+    $('cfgToken').value = cfg.token; $('cfgRepo').value = cfg.repo;
+    $('cfgBranch').value = cfg.branch; $('cfgPath').value = cfg.pathTpl;
+  }
+  $('cfgSave').onclick = function () {
+    cfg.token = $('cfgToken').value.trim(); cfg.repo = $('cfgRepo').value.trim();
+    cfg.branch = $('cfgBranch').value.trim() || 'main';
+    cfg.pathTpl = $('cfgPath').value.trim() || 'images/{y}/{m}/';
+    store.set('token', cfg.token); store.set('repo', cfg.repo);
+    store.set('branch', cfg.branch); store.set('path', cfg.pathTpl);
+    toast('设置已保存 ✅'); $('cfgPanel').classList.add('hidden');
+  };
+  loadCfgToForm();
+
+  // ---- 文件名与路径 ----
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function genName(file) {
+    var d = new Date();
+    var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' +
+                pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    var rand = Math.random().toString(36).slice(2, 6);
+    var ext = '';
+    var m = /\.([a-z0-9]{2,5})$/i.exec(file.name || '');
+    if (m) { ext = '.' + m[1].toLowerCase(); }
+    else {
+      var t = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/svg+xml': '.svg', 'image/bmp': '.bmp', 'image/x-icon': '.ico' };
+      ext = t[file.type] || '.png';
+    }
+    return stamp + '-' + rand + ext;
+  }
+  function fillTpl(tpl) {
+    var d = new Date();
+    var out = tpl.replace(/\{y\}/g, d.getFullYear()).replace(/\{m\}/g, pad(d.getMonth() + 1)).replace(/\{d\}/g, pad(d.getDate()));
+    if (out && out[out.length - 1] !== '/') out += '/';
+    return out;
+  }
+  function encPath(p) { return p.split('/').map(encodeURIComponent).join('/'); }
+
+  // ---- 上传 ----
+  var queue = [], uploading = false;
+  function enqueue(files) {
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!f.type || f.type.indexOf('image/') !== 0) { toast('跳过非图片文件：' + (f.name || '')); continue; }
+      if (f.size > 45 * 1024 * 1024) { toast('文件太大（>45MB），已跳过：' + f.name); continue; }
+      queue.push(f);
+    }
+    pump();
+  }
+  function fileToBase64(file) {
+    return file.arrayBuffer().then(function (buf) {
+      var bytes = new Uint8Array(buf), binary = '', i;
+      for (i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(binary);
+    });
+  }
+  function pump() {
+    if (uploading || !queue.length) return;
+    uploading = true;
+    var file = queue.shift();
+    doUpload(file).then(function () { uploading = false; pump(); },
+                        function () { uploading = false; pump(); });
+  }
+  function doUpload(file) {
+    if (!cfg.token) {
+      setStatus('err', '请先点右上角 ⚙️ 设置，填入 GitHub Token。');
+      $('cfgPanel').classList.remove('hidden');
+      return Promise.resolve();
+    }
+    var name = genName(file);
+    var repoPath = fillTpl(cfg.pathTpl) + name;
+    setStatus('working', '<span class="spinner"></span>正在上传 ' + escapeHtml(file.name || name) + ' …');
+    return fileToBase64(file).then(function (b64) {
+      var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + encPath(repoPath);
+      return fetch(api, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bearer ' + cfg.token,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: 'upload ' + name + ' via webui', content: b64, branch: cfg.branch })
+      }).then(function (res) {
+        if (res.status === 401) throw new Error('Token 无效或已过期，请检查设置。');
+        if (res.status === 404) throw new Error('仓库或分支不存在，请检查「仓库/分支」设置。');
+        if (res.status === 422) throw new Error('文件名冲突，请重试。');
+        if (!res.ok) throw new Error('上传失败（HTTP ' + res.status + '），请稍后重试。');
+        var cdn = 'https://cdn.jsdelivr.net/gh/' + cfg.repo + '@' + cfg.branch + '/' + encPath(repoPath);
+        var md = '![' + name + '](' + cdn + ')';
+        addHistory({ name: name, url: cdn, md: md, time: Date.now(), size: file.size });
+        setStatus('ok', '上传成功 ✅　Markdown 链接已自动复制。');
+        copyText(md, 'Markdown 链接已复制');
+      });
+    }).catch(function (err) {
+      setStatus('err', '上传失败：' + escapeHtml(err.message || '未知错误'));
+    });
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ---- 历史记录 ----
+  function getHistory() {
+    try { return JSON.parse(store.get('history', '[]')); } catch (e) { return []; }
+  }
+  function addHistory(item) {
+    var h = getHistory(); h.unshift(item); h = h.slice(0, 60);
+    store.set('history', JSON.stringify(h)); renderHistory();
+  }
+  function fmtSize(b) {
+    if (b > 1048576) return (b / 1048576).toFixed(1) + ' MB';
+    return Math.max(1, Math.round(b / 1024)) + ' KB';
+  }
+  function fmtTime(t) {
+    var d = new Date(t);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function renderHistory() {
+    var h = getHistory(), box = $('history');
+    if (!h.length) { box.innerHTML = '<div class="empty">还没有上传记录，拖张图进来试试吧 👆</div>'; return; }
+    box.innerHTML = h.map(function (it, i) {
+      return '<div class="item">' +
+        '<img class="thumb" loading="lazy" src="' + escapeHtml(it.url) + '" alt="">' +
+        '<div class="info"><div class="name">' + escapeHtml(it.name) + '</div>' +
+        '<div class="meta">' + fmtTime(it.time) + ' · ' + fmtSize(it.size || 0) + '</div>' +
+        '<div class="linkrow"><code>' + escapeHtml(it.url) + '</code>' +
+        '<button class="btn ghost" data-act="md" data-i="' + i + '">Markdown</button>' +
+        '<button class="btn ghost" data-act="url" data-i="' + i + '">链接</button></div>' +
+        '</div></div>';
+    }).join('');
+    box.querySelectorAll('button').forEach(function (btn) {
+      btn.onclick = function () {
+        var it = getHistory()[+btn.getAttribute('data-i')];
+        if (!it) return;
+        if (btn.getAttribute('data-act') === 'md') copyText(it.md, 'Markdown 已复制');
+        else copyText(it.url, '链接已复制');
+      };
+    });
+  }
+  renderHistory();
+
+  // ---- 交互：拖拽 / 点击 / 粘贴 ----
+  var dz = $('dropzone'), fi = $('fileInput');
+  dz.onclick = function () { fi.click(); };
+  fi.onchange = function () { enqueue(fi.files); fi.value = ''; };
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('dragover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('dragover'); });
+  });
+  dz.addEventListener('drop', function (e) { enqueue(e.dataTransfer.files); });
+  document.addEventListener('paste', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    var files = (e.clipboardData && e.clipboardData.files) || [];
+    if (files.length) { e.preventDefault(); enqueue(files); }
+  });
+})();
+</script>
+</body>
+</html>
