@@ -111,6 +111,8 @@
     <label>存储路径模板（{y} 年 {m} 月 {d} 日）</label>
     <input id="cfgPath" placeholder="images/{y}/{m}/">
     <button class="btn" id="cfgSave">保存设置</button>
+    <button class="btn ghost" id="cfgTest" style="margin-left:8px;">测试连接</button>
+    <span id="cfgTestResult" style="font-size:13px;margin-left:10px;"></span>
   </div>
 
   <div id="dropzone">
@@ -183,6 +185,23 @@
     store.set('token', cfg.token); store.set('repo', cfg.repo);
     store.set('branch', cfg.branch); store.set('path', cfg.pathTpl);
     toast('设置已保存 ✅'); $('cfgPanel').classList.add('hidden');
+  };
+  $('cfgTest').onclick = function () {
+    var token = $('cfgToken').value.trim(), repo = $('cfgRepo').value.trim();
+    var out = $('cfgTestResult');
+    if (!token) { out.textContent = '请先填写 Token'; out.style.color = 'var(--err)'; return; }
+    if (!repo || repo.indexOf('/') < 0) { out.textContent = '请填写正确的仓库（owner/repo）'; out.style.color = 'var(--err)'; return; }
+    out.textContent = '测试中…'; out.style.color = 'var(--muted)';
+    // 用 contents 根目录探测 Contents 读取权限
+    fetch('https://api.github.com/repos/' + repo + '/contents/', {
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
+    }).then(function (res) {
+      if (res.status === 200) { out.textContent = '✅ Token 有效，有 Contents 读取权限'; out.style.color = 'var(--ok)'; }
+      else if (res.status === 401) { out.textContent = '❌ Token 无效或已过期'; out.style.color = 'var(--err)'; }
+      else if (res.status === 404) { out.textContent = '❌ 仓库不存在，或 token 的 Repository access 没选中该仓库'; out.style.color = 'var(--err)'; }
+      else if (res.status === 403) { out.textContent = '❌ 权限不足：检查 token 的 Contents 权限和仓库范围'; out.style.color = 'var(--err)'; }
+      else { out.textContent = '❌ HTTP ' + res.status; out.style.color = 'var(--err)'; }
+    }).catch(function () { out.textContent = '❌ 网络错误，请检查网络后重试'; out.style.color = 'var(--err)'; });
   };
   loadCfgToForm();
 
@@ -258,6 +277,7 @@
         body: JSON.stringify({ message: 'upload ' + name + ' via webui', content: b64, branch: cfg.branch })
       }).then(function (res) {
         if (res.status === 401) throw new Error('Token 无效或已过期，请检查设置。');
+        if (res.status === 403) throw new Error('权限不足：token 需要 image-bed 仓库的 Contents「读写」权限，且 Repository access 要选中该仓库。点设置里的「测试连接」可排查。');
         if (res.status === 404) throw new Error('仓库或分支不存在，请检查「仓库/分支」设置。');
         if (res.status === 422) throw new Error('文件名冲突，请重试。');
         if (!res.ok) throw new Error('上传失败（HTTP ' + res.status + '），请稍后重试。');
